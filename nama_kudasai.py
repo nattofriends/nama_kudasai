@@ -20,9 +20,9 @@ from common import open_state
 from common import setup_logging
 
 
-# ElementTree doesn't want to parse these for us or let us read xmlns tags...
 INNOCUOUS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:75.0) Gecko/20100101 Firefox/75.0"
 
+# ElementTree doesn't want to parse these for us or let us read xmlns tags...
 FEED_NS = {
     'default': 'http://www.w3.org/2005/Atom',
     'media': 'http://search.yahoo.com/mrss/',
