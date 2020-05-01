@@ -1,0 +1,14 @@
+dropbox_api_access_token: some_dropbox_app_development_access_token
+
+# This value cannot be over 150MB.
+# Also, this value needs to be small enough for each chunk
+# to finish in less than 100 seconds. If you are experiencing
+# timeouts, lower this value or get better Internet.
+dropbox_chunk_size_mb: 50
+
+# Most streams farther out than this are probably free talk
+ignore_wait_greater_than_seconds: 604800  # 7 days
+
+channels:
+  # List of YouTube channel ids
+  - UCabcd1234
