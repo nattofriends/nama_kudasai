@@ -174,6 +174,7 @@ def main():
         '-y',
         '-i', filepath_streamlink,
         '-c', 'copy',
+        '-movflags', 'faststart',
         filepath_output,
     )
     if not args.no_remux:
