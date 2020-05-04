@@ -39,7 +39,8 @@ class VideoState(IntEnum):
     NOT_LIVESTREAM = 1
     FINISHED = 2
     # Looks like the channel listing is only eventually consistent,
-    # and may still show removed videos for a while.
+    # and may still show removed or unavailable videos for a while.
+    # XXX: Should this just be called UNAVAILABLE or UNPLAYABLE?
     REMOVED = 3
     # Haven't seen these from the feed yet, only from /live.
     TOO_FAR_IN_FUTURE = 4
@@ -147,7 +148,12 @@ def check_video(config, video_id, cached_liveness):
     # seeing as how we can't really do anythiing if videoDetails isn't present,
     # might as well go off that.
     if 'videoDetails' not in video_info:
-        log.warn(f'{video_info} has no details, marking as removed')
+        log.warn(
+            f'{video_info} has no details, marking as removed '
+            '(playability: {}, {})'.format(
+            video_info["playabilityStatus"]["status"],
+            video_info["playabilityStatus"]["reason"],
+        ))
         return VideoState.REMOVED
 
     video_details = video_info['videoDetails']
@@ -163,6 +169,8 @@ def check_video(config, video_id, cached_liveness):
         log.debug(f'{video_id} appears to be finished, skipping')
         return VideoState.FINISHED
 
+    # XXX: Might make more sense to use playabilityStatus in the first
+    # place if we have to access more info about it here
     is_upcoming = video_info['videoDetails'].get('isUpcoming', False)
     if is_upcoming:
         scheduled_start = video_info['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer'].get('scheduledStartTime')
@@ -193,7 +201,7 @@ def check_video(config, video_id, cached_liveness):
         return VideoState.AVAILABLE
 
     # Time to run!
-    log.info(f'Starting downloader for {video_id}')
+    log.info(f'Starting downloader for {video_id} ({video_details["title"]}))')
     subprocess.Popen(
         [sys.executable, 'download.py', '--', video_id],
     )

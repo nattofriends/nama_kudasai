@@ -49,7 +49,17 @@ def wait(video_info):
     while True:
         log.info(f'Sleeping for {POLL_SLEEP_SECS}s')
         time.sleep(POLL_SLEEP_SECS)
+
         video_info = get_video_info(video_info['videoDetails']['videoId'])
+        if 'videoDetails' not in video_info:
+            log.error(
+                f'{args.video_id} has no details, cannot proceed '
+                '(playability: {}, {})'.format(
+                video_info["playabilityStatus"]["status"],
+                video_info["playabilityStatus"]["reason"],
+            ))
+            sys.exit(1)
+
         if not video_info['videoDetails'].get('isUpcoming', False):
             log.info(f'Video is no longer upcoming, time to go')
             return
@@ -72,6 +82,7 @@ def main():
     parser.add_argument('--no-remux', action='store_true')
     parser.add_argument('--no-upload', action='store_true')
     parser.add_argument('--no-delete', action='store_true')
+    parser.add_argument('--force', action='store_true')
     parser.add_argument('--force-log-to-file', action='store_true')
     parser.add_argument('video_id')
 
@@ -90,7 +101,7 @@ def main():
 
     pid_exists, active_downloaders = check_pid(args.video_id)
 
-    if pid_exists:
+    if pid_exists and not args.force:
         raise ValueError('Another downloader is still alive, exiting')
     else:
         active_downloaders[args.video_id] = os.getpid()
@@ -98,6 +109,15 @@ def main():
             state['active_downloaders'] = active_downloaders
 
     video_info = get_video_info(args.video_id)
+    if 'videoDetails' not in video_info:
+        log.error(
+            f'{args.video_id} has no details, cannot proceed '
+            '(playability: {}, {})'.format(
+            video_info["playabilityStatus"]["status"],
+            video_info["playabilityStatus"]["reason"],
+        ))
+        sys.exit(1)
+
     is_upcoming = video_info['videoDetails'].get('isUpcoming', False)
 
     log.info(f'Channel: {video_info["videoDetails"]["author"]}')
