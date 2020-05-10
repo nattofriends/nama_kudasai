@@ -70,7 +70,7 @@ def wait(video_info):
 
 def sanitize_filename(name):
     return re.sub(
-        r'[\\\|\*\?/:"<>]',
+        r'[\\\|\*\?/:"<>#]',
         '_',
         unicodedata.normalize('NFC', name),
     )
