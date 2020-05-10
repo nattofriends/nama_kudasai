@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from pathlib import Path
 import hashlib
 import logging
@@ -5,6 +6,7 @@ import logging
 import dropbox
 
 from common import load_config
+from common import setup_logging
 
 # DropboxContentHasher and StreamHasherWrapper are from
 # https://github.com/dropbox/dropbox-api-content-hasher/blob/master/python/dropbox_content_hasher.py
@@ -157,10 +159,10 @@ class StreamHasherWrapper(object):
         return b
 
 
-def upload(access_token, channel_directory, filename, filepath):
-    dbx = dropbox.Dropbox(access_token)
-
+def upload(channel_directory, filename, filepath):
     config = load_config()
+
+    dbx = dropbox.Dropbox(config['dropbox_api_access_token'])
 
     upload_chunk_size = config['dropbox_chunk_size_mb'] * 1024 * 1024
 
@@ -216,3 +218,24 @@ def upload(access_token, channel_directory, filename, filepath):
     # no one will ever see. Just retry reuploading it maybe?
 
     assert local_hash == remote_hash, f'Local hash {local_hash} and remote hash {remote_hash} do not match'
+
+
+def main():
+    setup_logging()
+
+    parser = ArgumentParser()
+    parser.add_argument('channel_directory')
+    parser.add_argument('local_path')
+    args = parser.parse_args()
+
+    local_path = Path(args.local_path)
+
+    upload(
+        args.channel_directory,
+        local_path.name,
+        local_path,
+    )
+
+
+if __name__ == '__main__':
+    main()

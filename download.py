@@ -186,7 +186,6 @@ def main():
     # Upload
     if not args.no_upload:
         upload(
-            config['dropbox_api_access_token'],
             sanitize_filename(video_info['videoDetails']['author']),
             # This argument duplication is kind of silly...
             filename_output,
