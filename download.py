@@ -16,6 +16,7 @@ from common import get_video_info
 from common import load_config
 from common import open_state
 from common import setup_logging
+from common import VideoInfoError
 from upload_dropbox import upload
 
 POLL_THRESHOLD_SECS = 300
@@ -50,7 +51,14 @@ def wait(video_info):
         log.info(f'Sleeping for {POLL_SLEEP_SECS}s')
         time.sleep(POLL_SLEEP_SECS)
 
-        video_info = get_video_info(video_info['videoDetails']['videoId'])
+        try:
+            video_info = get_video_info(video_info['videoDetails']['videoId'])
+        except VideoInfoError as e:
+            log.info('Got VideoInfoError, pretending nothing happened - we will see')
+            print(json.dumps(e.args[0], indent=2))
+
+            continue
+
         if 'videoDetails' not in video_info:
             log.error(
                 f'{args.video_id} has no details, cannot proceed '

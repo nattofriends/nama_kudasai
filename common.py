@@ -45,7 +45,7 @@ def open_state():
     yield state
 
     with open(STATE_FILENAME, 'w') as fh:
-        json.dump(state, fh, indent=4)
+        json.dump(state, fh, indent=2)
 
 
 def check_pid(video_id):
@@ -66,6 +66,10 @@ def check_pid(video_id):
         return (False, active_downloaders)
 
 
+class VideoInfoError(Exception):
+    pass
+
+
 def get_video_info(video_id):
     resp = urlopen(
         f'https://www.youtube.com/get_video_info?video_id={video_id}'
@@ -76,7 +80,18 @@ def get_video_info(video_id):
         for k, v
         in parse_qs(resp.read().decode('utf-8')).items()
     }
-    # The outer info in video_info is pretty useless.
-    video_info = json.loads(video_info['player_response'])
+
+    # This tends to happen right around when the livestream starts, not sure why
+    if video_info['status'] != 'ok':
+        raise VideoInfoError(video_info)
+
+    try:
+        # The outer info in video_info is pretty useless.
+        video_info = json.loads(video_info['player_response'])
+    except KeyError as e:
+        # This shouldn't happen, but looks like it does.
+        print("Dumping video_info:")
+        print(json.dumps(video_info, indent=2))
+        raise e
 
     return video_info
