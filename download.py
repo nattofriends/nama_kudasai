@@ -211,7 +211,7 @@ def main():
         log.info('Cleaning up state')
         with open_state() as state:
             active_downloaders = state.get('active_downloaders', {})
-            active_downloaders.pop(args.video_id, None)
+        active_downloaders.pop(args.video_id, None)
     else:
         log.info('Skipping cleanup')
 
