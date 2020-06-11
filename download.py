@@ -18,6 +18,7 @@ from common import load_config
 from common import open_state
 from common import setup_logging
 from common import VideoInfoError
+from notification import notify
 from upload_dropbox import upload
 
 POLL_THRESHOLD_SECS = 300
@@ -90,9 +91,12 @@ def main():
     parser.add_argument('--no-download', action='store_true')
     parser.add_argument('--no-remux', action='store_true')
     parser.add_argument('--no-upload', action='store_true')
+    parser.add_argument('--no-notify', action='store_true')
     parser.add_argument('--no-delete', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--force-log-to-file', action='store_true')
+    parser.add_argument('--override-channel-name')
+    parser.add_argument('--override-video-name')
     parser.add_argument('video_id')
 
     args = parser.parse_args()
@@ -117,33 +121,42 @@ def main():
         with open_state() as state:
             state['active_downloaders'] = active_downloaders
 
-    video_info = get_video_info(args.video_id)
-    if 'videoDetails' not in video_info:
-        log.error(
-            f'{args.video_id} has no details, cannot proceed '
-            '(playability: {}, {})'.format(
-            video_info["playabilityStatus"]["status"],
-            video_info["playabilityStatus"]["reason"],
-        ))
-        sys.exit(1)
+    if args.override_channel_name and args.override_video_name:
+        log.info('Using overridden channel and video name, setting is_upcoming to false')
+        channel_name = args.override_channel_name
+        video_name = args.override_video_name
+        # There's no reason to use these overrides for an upcoming video
+        is_upcoming = False
+    else:
+        video_info = get_video_info(args.video_id)
+        if 'videoDetails' not in video_info:
+            log.error(
+                f'{args.video_id} has no details, cannot proceed '
+                '(playability: {}, {})'.format(
+                video_info["playabilityStatus"]["status"],
+                video_info["playabilityStatus"]["reason"],
+            ))
+            sys.exit(1)
+        else:
+            channel_name = video_info['videoDetails']['author']
+            video_name = video_info['videoDetails']['title']
+            is_upcoming = video_info['videoDetails'].get('isUpcoming', False)
 
-    is_upcoming = video_info['videoDetails'].get('isUpcoming', False)
-
-    log.info(f'Channel: {video_info["videoDetails"]["author"]}')
-    log.info(f'Title: {video_info["videoDetails"]["title"]}')
+    log.info(f'Channel: {channel_name}')
+    log.info(f'Title: {video_name}')
     log.info(f'Upcoming: {is_upcoming}')
 
     if is_upcoming:
         # XXX: Also apply config ignore_wait_greater_than_seconds here?
         wait(video_info)
 
-    filename_base = sanitize_filename(video_info['videoDetails']['title'])
+    filename_base = sanitize_filename(video_name)
     log.info(f'Filename base: {filename_base}')
 
     # Copy youtube-dl's naming scheme
     filepath_streamlink = WORKDIR / f'{filename_base}-{args.video_id}.ts'
 
-    # XXX: If file already exists, rename it and concatenate it later?
+    # TODO: If file already exists, rename it and concatenate it later?
 
     # XXX: youtube-dl used to be less reliable than streamlink for downloading
     # streams - that may no longer be the case.
@@ -194,12 +207,24 @@ def main():
 
     # Upload
     if not args.no_upload:
-        upload(
-            sanitize_filename(video_info['videoDetails']['author']),
+        link_url, thumbnail = upload(
+            sanitize_filename(channel_name),
             # This argument duplication is kind of silly...
             filename_output,
             filepath_output,
         )
+
+        # We won't have link and thumb if not uploading without
+        # going through a bunch more effort.
+        if not args.no_notify:
+            notify(
+                channel_name,
+                video_name,
+                link_url,
+                thumbnail,
+            )
+        else:
+            log.info('Skipping notify')
     else:
         log.info('Skipping upload')
 

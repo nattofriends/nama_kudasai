@@ -219,6 +219,16 @@ def upload(channel_directory, filename, filepath):
 
     assert local_hash == remote_hash, f'Local hash {local_hash} and remote hash {remote_hash} do not match'
 
+    # Get the shared link and thumbnail
+    # XXX: Maybe we should fetch the Youtube thumbnail way earlier?
+    shared_link = dbx.sharing_create_shared_link(str(full_path))
+    _, thumbnail_resp = dbx.files_get_thumbnail(
+        str(full_path),
+        format=dropbox.files.ThumbnailFormat.png,
+        size=dropbox.files.ThumbnailSize.w1024h768,
+    )
+    return (shared_link.url, thumbnail_resp.content)
+
 
 def main():
     setup_logging()
