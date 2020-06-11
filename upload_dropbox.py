@@ -229,7 +229,10 @@ def upload(channel_directory, filename, filepath):
         format=dropbox.files.ThumbnailFormat.png,
         size=dropbox.files.ThumbnailSize.w1024h768,
     )
-    return (shared_link.url, thumbnail_resp.content)
+
+    # This is probably pretty brittle
+    url = shared_link.url.replace("www.dropbox", "dl.dropboxusercontent")
+    return (url, thumbnail_resp.content)
 
 
 def main():
