@@ -168,6 +168,8 @@ def upload(channel_directory, filename, filepath):
 
     full_path = DROPBOX_ROOT / channel_directory / filename
 
+    log.info(f'Full upload path is {full_path}')
+
     total_size = filepath.stat().st_size
     total_chunks = (total_size // upload_chunk_size) + 1
 
