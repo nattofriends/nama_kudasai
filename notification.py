@@ -18,6 +18,8 @@ def notify(channel, title, link, thumbnail):
     msg['Subject'] = f'[nama_kudasai] {channel} finished a live stream'
     msg['From'] = 'nama_kudasai'
     msg['To'] = getuser()
+    # Explicitly unthread messages
+    msg['References'] = make_msgid()
 
     msg.set_content(dedent(f'''\
         {title}
@@ -36,6 +38,14 @@ def notify(channel, title, link, thumbnail):
                     <h2>{channel}</h2>
                 </div>
             </a>
+
+            <div itemscope itemtype="http://schema.org/EmailMessage">
+                <meta itemprop="description" content="View video"/>
+                <div itemprop="potentialAction" itemscope itemtype="http://schema.org/ViewAction">
+                    <link itemprop="target url" href="{link}" />
+                    <meta itemprop="name" content="View"/>
+                  </div>
+            </div>
         </body></html>
     '''), subtype='html')
 
