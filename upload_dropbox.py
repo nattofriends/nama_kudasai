@@ -3,16 +3,19 @@ from pathlib import Path
 import hashlib
 import logging
 
+from retrying import retry
 import dropbox
+import requests.exceptions
 
 from common import load_config
 from common import setup_logging
 
-# DropboxContentHasher and StreamHasherWrapper are from
+# DropboxContentHasher is from
 # https://github.com/dropbox/dropbox-api-content-hasher/blob/master/python/dropbox_content_hasher.py
 
 
 DROPBOX_ROOT = Path('/nama_kudasai')
+RETRY_WAIT_MS = 1000
 
 
 log = logging.getLogger(__name__)
@@ -100,63 +103,32 @@ class DropboxContentHasher(object):
         return c
 
 
-class StreamHasherWrapper(object):
-    """
-    A wrapper around a file-like object (either for reading or writing)
-    that hashes everything that passes through it.  Can be used with
-    DropboxContentHasher or any 'hashlib' hasher.
+def retry_condition(exc):
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        log.warning(f'Retrying a ConnectionError: {exc}')
+        return True
+    return False
 
-    Example:
 
-        hasher = DropboxContentHasher()
-        with open('some-file', 'rb') as f:
-            wrapped_f = StreamHasher(f, hasher)
-            response = some_api_client.upload(wrapped_f)
+@retry(
+    retry_on_exception=retry_condition,
+    wait_fixed=RETRY_WAIT_MS,
+)
+def upload_chunk(dbx, cursor, filepath, chunk_num, upload_chunk_size, hasher, is_last_chunk):
+    with open(filepath, 'rb') as fh:
+        fh.seek(chunk_num * upload_chunk_size)
 
-        locally_computed = hasher.hexdigest()
-        assert response.content_hash == locally_computed
-    """
+        data = fh.read(upload_chunk_size)
 
-    def __init__(self, f, hasher):
-        self._f = f
-        self._hasher = hasher
+        dbx.files_upload_session_append_v2(
+            data,
+            cursor,
+            close=is_last_chunk,
+        )
 
-    def close(self):
-        return self._f.close()
-
-    def flush(self):
-        return self._f.flush()
-
-    def fileno(self):
-        return self._f.fileno()
-
-    def tell(self):
-        return self._f.tell()
-
-    def read(self, *args):
-        b = self._f.read(*args)
-        self._hasher.update(b)
-        return b
-
-    def write(self, b):
-        self._hasher.update(b)
-        return self._f.write(b)
-
-    def next(self):
-        b = self._f.next()
-        self._hasher.update(b)
-        return b
-
-    def readline(self, *args):
-        b = self._f.readline(*args)
-        self._hasher.update(b)
-        return b
-
-    def readlines(self, *args):
-        bs = self._f.readlines(*args)
-        for b in bs:
-            self._hasher.update(b)
-        return b
+        # Don't want to update the hasher until we actually finish uploading the data,
+        # since this function can be retried
+        hasher.update(data)
 
 
 def upload(channel_directory, filename, filepath):
@@ -180,6 +152,7 @@ def upload(channel_directory, filename, filepath):
 
     uploaded = 0
     hasher = DropboxContentHasher()
+
     for chunk_num in range(total_chunks):
         log.info(f'Uploading chunk {chunk_num}')
         is_last_chunk = chunk_num == total_chunks - 1
@@ -187,16 +160,8 @@ def upload(channel_directory, filename, filepath):
             session_id=session.session_id,
             offset=uploaded,
         )
-        with open(filepath, 'rb') as fh:
-            fh.seek(chunk_num * upload_chunk_size)
-            wrapped_fh = StreamHasherWrapper(fh, hasher)
-            data = wrapped_fh.read(upload_chunk_size)
 
-            dbx.files_upload_session_append_v2(
-                data,
-                cursor,
-                close=is_last_chunk,
-            )
+        upload_chunk(dbx, cursor, filepath, chunk_num, upload_chunk_size, hasher, is_last_chunk)
 
         uploaded += total_size % upload_chunk_size if is_last_chunk else upload_chunk_size
 
