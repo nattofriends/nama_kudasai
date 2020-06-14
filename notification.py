@@ -23,7 +23,6 @@ def notify(channel, title, link, thumbnail):
 
     msg.set_content(dedent(f'''\
         {title}
-        {channel}
 
         {link}
     '''))
@@ -33,19 +32,10 @@ def notify(channel, title, link, thumbnail):
         <html><body>
             <a style="text-decoration:none; color:#333" href="{link}">
                 <div>
-                    <img style="max-width:60%" src="cid:{thumbnail_cid[1:-1]}" />
-                    <h1>{title}</h1>
-                    <h2>{channel}</h2>
+                    <h2>{title}</h2>
+                    <img style="max-width:100%" src="cid:{thumbnail_cid[1:-1]}" />
                 </div>
             </a>
-
-            <div itemscope itemtype="http://schema.org/EmailMessage">
-                <meta itemprop="description" content="View video"/>
-                <div itemprop="potentialAction" itemscope itemtype="http://schema.org/ViewAction">
-                    <link itemprop="target url" href="{link}" />
-                    <meta itemprop="name" content="View"/>
-                  </div>
-            </div>
         </body></html>
     '''), subtype='html')
 
