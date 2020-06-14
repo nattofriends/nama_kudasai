@@ -5,7 +5,6 @@ from urllib.request import Request
 from urllib.request import urlopen
 import xml.etree.ElementTree as ET
 import logging
-import socket
 import subprocess
 import sys
 import time
@@ -63,7 +62,8 @@ def check_channel(config, args, channel, video_liveness_cache):
             headers={
                 'User-Agent': INNOCUOUS_UA,
             },
-        )
+        ),
+        timeout=READ_TIMEOUT_S,
     )
 
     # XML documents are not poorly-formed HTML documents!
@@ -96,7 +96,8 @@ def check_channel(config, args, channel, video_liveness_cache):
                     # Too much JS if we pretend we're a modern browser
                     'User-Agent': '',
                 },
-            )
+            ),
+            timeout=READ_TIMEOUT_S,
         )
 
         tree = html5lib.parse(resp)
@@ -219,8 +220,6 @@ def main():
     args = parser.parse_args()
 
     config = load_config()
-
-    socket.setdefaulttimeout(READ_TIMEOUT_S)
 
     state = load_state()
     cached_channel_state = state.get('channel_videos', {})
