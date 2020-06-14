@@ -5,6 +5,7 @@ from urllib.request import Request
 from urllib.request import urlopen
 import xml.etree.ElementTree as ET
 import logging
+import socket
 import subprocess
 import sys
 import time
@@ -19,6 +20,9 @@ from common import get_video_info
 from common import open_state
 from common import setup_logging
 
+
+# Sockets...
+READ_TIMEOUT_S = 60.0
 
 INNOCUOUS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:75.0) Gecko/20100101 Firefox/75.0"
 
@@ -215,6 +219,8 @@ def main():
     args = parser.parse_args()
 
     config = load_config()
+
+    socket.setdefaulttimeout(READ_TIMEOUT_S)
 
     state = load_state()
     cached_channel_state = state.get('channel_videos', {})
