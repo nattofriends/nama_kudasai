@@ -197,6 +197,9 @@ def main():
         '-i', filepath_streamlink,
         '-c', 'copy',
         '-movflags', 'faststart',
+        '-metadata', f'title={video_name}',
+        '-metadata', f'artist={channel_name}',
+        '-metadata', f'comment=https://www.youtube.com/watch?v={args.video_id}',
         filepath_output,
     )
     if not args.no_remux:
