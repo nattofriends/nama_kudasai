@@ -16,6 +16,16 @@ Create a virtualenv and install `requirements.txt` into it.
 
 Use `cron` to run `nama_kudasai.py` in the virtualenv every so often. It will spawn downloaders as appropriate. The downloaders will upload the archives to channel directories under the `nama_kudasai` directory in Dropbox.
 
+### Docker
+
+Mount a volume at `/data` containing `config.yaml` and directories named `work` and `logs`. This directory will be used as a temp download store so pick somewhere with a moderate amount of disk space.
+
+Example:
+
+```
+docker run -d --name nama_kudasai --volume /home/nama_kudasai:/data nolanlum:nama_kudasai
+```
+
 ## Caveats
 - Live rewinding is currently broken in [Streamlink](https://streamlink.github.io/), the software used to download the stream. If a stream starts before a downloader is started for it, the past segments of the stream are not saved, even if they are viewable from YouTube itself at the time. See https://github.com/streamlink/streamlink/issues/2936 for more details.
 - Downloader logs go to the `logs/` folder and there is no good way to surface if something abnormal has happened.

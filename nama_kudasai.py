@@ -5,6 +5,7 @@ from urllib.request import Request
 from urllib.request import urlopen
 import xml.etree.ElementTree as ET
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -208,7 +209,7 @@ def check_video(config, video_id, cached_liveness):
     # Time to run!
     log.info(f'Starting downloader for {video_id} ({video_details["title"]}))')
     subprocess.Popen(
-        [sys.executable, 'download.py', '--', video_id],
+        [sys.executable, os.path.join(os.path.dirname(__file__), 'download.py'), '--', video_id],
     )
 
     return VideoState.AVAILABLE
