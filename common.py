@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from urllib.request import Request
 from urllib.request import urlopen
 from urllib.parse import parse_qs
 import json
@@ -11,6 +12,7 @@ import yaml
 log = logging.getLogger(__name__)
 
 STATE_FILENAME = 'state.json'
+INNOCUOUS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0"
 
 
 # TODO: Actually increase logging levels when -v's are passed
@@ -72,7 +74,12 @@ class VideoInfoError(Exception):
 
 def get_video_info(video_id):
     resp = urlopen(
-        f'https://www.youtube.com/get_video_info?video_id={video_id}'
+        Request(
+            f'https://www.youtube.com/get_video_info?video_id={video_id}',
+            headers={
+                'User-Agent': INNOCUOUS_UA,
+            },
+        ),
     )
 
     video_info = {

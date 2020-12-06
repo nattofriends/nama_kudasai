@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from datetime import timedelta
 from enum import IntEnum
+from urllib.error import HTTPError
 from urllib.request import Request
 from urllib.request import urlopen
 import xml.etree.ElementTree as ET
@@ -19,12 +20,11 @@ from common import load_state
 from common import get_video_info
 from common import open_state
 from common import setup_logging
+from common import INNOCUOUS_UA
 
 
 # Sockets...
 READ_TIMEOUT_S = 60.0
-
-INNOCUOUS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:75.0) Gecko/20100101 Firefox/75.0"
 
 # ElementTree doesn't want to parse these for us or let us read xmlns tags...
 FEED_NS = {
@@ -49,6 +49,7 @@ class VideoState(IntEnum):
     # Haven't seen these from the feed yet, only from /live.
     TOO_FAR_IN_FUTURE = 4
     NOT_SCHEDULED = 5
+    UNKNOWN_RATE_LIMITED = 6
 
 
 def check_channel(config, args, channel, video_liveness_cache):
@@ -148,17 +149,26 @@ def check_video(config, video_id, cached_liveness):
     # XXX: We should additionally store the scheduled start time
     # in order to be able to use the cached VideoState.TOO_FAR_IN_FUTURE.
 
-    video_info = get_video_info(video_id)
+    try:
+        video_info = get_video_info(video_id)
+    except HTTPError as e:
+        if e.code == 429:
+            log.warning(f'Rate limited while getting video info for {video_id}, skipping (no backoff)')
+            return VideoState.UNKNOWN_RATE_LIMITED
+        raise e
+
 
     # We could also check video_info['playabilityStatus']['status'], but
     # seeing as how we can't really do anythiing if videoDetails isn't present,
     # might as well go off that.
     if 'videoDetails' not in video_info:
-        log.warn(
-            f'{video_info} has no details, marking as removed '
-            '(playability: {}, {})'.format(
+        log.warning(
+            f'{video_info} has no details, marking as removed'
+        )
+        log.warning('(playability: {}, {}, {})'.format(
             video_info["playabilityStatus"]["status"],
-            video_info["playabilityStatus"]["reason"],
+            video_info["playabilityStatus"].get("reason", '(no reason provided'),
+            video_info["playabilityStatus"].get("messages", '(no messages provided)'),
         ))
         return VideoState.REMOVED
 
@@ -218,7 +228,10 @@ def check_video(config, video_id, cached_liveness):
 def main():
     parser = ArgumentParser()
     parser.add_argument('--skip-live-endpoint', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
+
+    setup_logging(level=logging.DEBUG if args.verbose else logging.INFO)
 
     config = load_config()
 
@@ -232,5 +245,4 @@ def main():
 
 
 if __name__ == '__main__':
-    setup_logging()
     main()
