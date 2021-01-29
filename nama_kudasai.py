@@ -4,6 +4,7 @@ from enum import IntEnum
 from urllib.error import HTTPError
 from urllib.request import Request
 from urllib.request import urlopen
+from urllib import parse
 import xml.etree.ElementTree as ET
 import logging
 import os
@@ -103,10 +104,12 @@ def check_channel(config, args, channel, video_liveness_cache):
         )
 
         tree = html5lib.parse(resp)
-        # If there's no stream here, this query will return empty.
-        htmlmeta_id = tree.find(".//html:meta[@itemprop='videoId']", FEED_NS)
-        if htmlmeta_id is not None:
-            live_video_id = htmlmeta_id.attrib['content']
+        # No more itemprop videoId...
+        canonical_link = tree.find(".//html:link[@rel='canonical']", FEED_NS)
+        canonical_url = canonical_link.attrib['href']
+        query = dict(parse.parse_qsl(parse.urlsplit(canonical_url).query))
+        live_video_id = query.get('v')
+        if live_video_id:
             log.info(f'Live endpoint shows {live_video_id} is active')
             if live_video_id in video_ids:
                 log.debug('Not adding because it was already in the feed')

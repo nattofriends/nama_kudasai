@@ -167,7 +167,7 @@ def main():
     # without hardcoding the path of the venv.
     streamlink_args = [
         '--force',  # Overwrite any existing file
-        '--hls-timeout', '600',
+        '--hls-timeout', '60',
         # XXX: This doesn't work right now!
         # See https://github.com/streamlink/streamlink/issues/2936
         '--hls-live-restart',

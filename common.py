@@ -12,7 +12,7 @@ import yaml
 log = logging.getLogger(__name__)
 
 STATE_FILENAME = 'state.json'
-INNOCUOUS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0"
+INNOCUOUS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:86.0) Gecko/20100101 Firefox/86.0"
 
 
 # TODO: Actually increase logging levels when -v's are passed
@@ -73,19 +73,26 @@ class VideoInfoError(Exception):
 
 
 def get_video_info(video_id):
+    # XXX: This request was getting blocked with 429 Too Many Requests after a period of time accessing
+    # over IPv6.
     resp = urlopen(
         Request(
             f'https://www.youtube.com/get_video_info?video_id={video_id}',
             headers={
+                "Accept": "text/html",
+                "Dnt": "1",
+                "Host": "www.youtube.com",
+                "Upgrade-Insecure-Requests": "1",
                 'User-Agent': INNOCUOUS_UA,
             },
         ),
     )
 
+    resp_bytes = resp.read()
     video_info = {
         k: v[0]
         for k, v
-        in parse_qs(resp.read().decode('utf-8')).items()
+        in parse_qs(resp_bytes.decode('utf-8')).items()
     }
 
     # This tends to happen right around when the livestream starts, not sure why
