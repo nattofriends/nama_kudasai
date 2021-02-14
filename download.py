@@ -1,5 +1,7 @@
+from datetime import datetime
 from datetime import timedelta
 from pathlib import Path
+from urllib.request import Request
 import argparse
 import json
 import logging
@@ -11,9 +13,13 @@ import time
 import unicodedata
 
 from streamlink_cli.main import main as streamlink_main
+from tzlocal import get_localzone
 
 from common import check_pid
+from common import get_current_firefox_version
+from common import get_opener
 from common import get_video_info
+from common import INNOCUOUS_UA
 from common import load_config
 from common import open_state
 from common import setup_logging
@@ -21,27 +27,45 @@ from common import VideoInfoError
 from notification import notify
 from upload_dropbox import upload
 
-POLL_THRESHOLD_SECS = 300
-POLL_SLEEP_SECS = 10
+POLL_THRESHOLD_SECS = 120
 
 WORKDIR = Path('work')
 LOGDIR = Path('logs')
 
+HEARTBEAT_FIXED = {
+    'context': {
+        'client': {
+            'browserName': 'Firefox',
+            'clientName': 'WEB',
+            'deviceMake': 'www',
+            'deviceModel': 'www',
+            'gl': 'US',
+            'hl': 'en',
+            'osName': 'Windows',
+            'osVersion': '10.0',
+        },
+        'request': {},
+    },
+    'heartbeatRequestParams': {
+        'heartbeatChecks': ['HEARTBEAT_CHECK_TYPE_LIVE_STREAM_STATUS']
+    },
+}
 
 # This should probably log elsewhere too?
 log = logging.getLogger(__name__)
 
 
-def wait(video_info):
+def wait(video_info, player_response, config):
     # If it hasn't started yet, we wait until a short amount of time before
     # the scheduled start time, and then start polling. This will probably
     # be less disruptive than constantly polling for hours and hours.
 
     # microformat.playerMicroformatRenderer.liveBroadcastDetails.startTimestamp is less deep in there but would require us to parse a ISO8601 datetime (oh no)
-    scheduled_start = int(video_info['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer']['scheduledStartTime'])
+    scheduled_start = int(
+        player_response['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer']['scheduledStartTime']
+    )
 
-    now = time.time()
-    total_wait = scheduled_start - now
+    total_wait = scheduled_start - time.time()
     log.info(f'Stream is scheduled to start at {scheduled_start} (in {timedelta(seconds=total_wait)})')
 
     if total_wait > POLL_THRESHOLD_SECS:
@@ -50,29 +74,61 @@ def wait(video_info):
         time.sleep(long_sleep)
 
     while True:
-        log.info(f'Sleeping for {POLL_SLEEP_SECS}s')
-        time.sleep(POLL_SLEEP_SECS)
+        # Use heartbeat endpoint like a real client because of rate limits
+        # on get_video_info
 
-        try:
-            video_info = get_video_info(video_info['videoDetails']['videoId'])
-        except VideoInfoError as e:
-            log.info('Got VideoInfoError, pretending nothing happened - we will see')
-            print(json.dumps(e.args[0], indent=2))
+        localzone = get_localzone()
+        offset = int(localzone.utcoffset(datetime.now()).total_seconds() / 60)
+        heartbeat_payload = HEARTBEAT_FIXED.copy()
+        heartbeat_payload['videoId'] = player_response['videoDetails']['videoId']
+        heartbeat_payload['context']['client'].update({
+            'browserVersion': f'{get_current_firefox_version()}.0',
+            'clientVersion': video_info['innertube_context_client_version'],
+            'timeZone': localzone.zone,
+            'utcOffsetMinutes': offset,
+        })
 
-            continue
+        with get_opener() as opener:
+            resp = opener.open(
+                Request(
+                    "https://www.youtube.com/youtubei/v1/player/heartbeat?alt=json&key={}".format(video_info['innertube_api_key']),
+                    data=json.dumps(heartbeat_payload).encode('utf-8'),
+                    headers={
+                        "Content-Type": 'application/json',
+                        "Host": "www.youtube.com",
+                        'User-Agent': INNOCUOUS_UA.format(version=get_current_firefox_version()),
+                    },
+                )
+            )
 
-        if 'videoDetails' not in video_info:
-            log.error(
-                f'{args.video_id} has no details, cannot proceed '
-                '(playability: {}, {})'.format(
-                video_info["playabilityStatus"]["status"],
-                video_info["playabilityStatus"]["reason"],
-            ))
+        heartbeat = json.loads(resp.read().decode('utf-8'))
+
+        scheduled_start = int(
+            heartbeat['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer']['scheduledStartTime']
+        )
+        total_wait = scheduled_start - time.time()
+
+        if total_wait > config['ignore_wait_greater_than_s']:
+            log.info(f"{player_response['videoDetails']['videoId']} starts too far in the future, at {scheduled_start} (in {timedelta(seconds=total_wait)})")
+            sys.exit(1)
+        elif total_wait < -config['ignore_past_scheduled_start_greater_than_s']:
+            log.info(f"{player_response['videoDetails']['videoId']} starts too far in the past, at {scheduled_start} ({timedelta(seconds=-total_wait)} ago)")
             sys.exit(1)
 
-        if not video_info['videoDetails'].get('isUpcoming', False):
+        status = heartbeat['playabilityStatus']['status']
+
+        if status == 'OK':
             log.info(f'Video is no longer upcoming, time to go')
             return
+        elif status == 'UNPLAYABLE':
+            log.info(f'Video not playable: {heartbeat["playabilityStatus"]}, giving up')
+            sys.exit(1)
+        elif status == 'LIVE_STREAM_OFFLINE':
+            poll_delay = int(heartbeat['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['pollDelayMs']) / 1000.0
+            log.info(f'Still offline, will sleep {poll_delay}s')
+            time.sleep(poll_delay)
+        else:
+            raise NotImplementedError(f"Don't know what to do with playability status {status}: {heartbeat['playabilityStatus']}")
 
     # Should be unreachable...?
     return
@@ -128,27 +184,26 @@ def main():
         # There's no reason to use these overrides for an upcoming video
         is_upcoming = False
     else:
-        video_info = get_video_info(args.video_id)
-        if 'videoDetails' not in video_info:
+        video_info, player_response = get_video_info(args.video_id)
+        if 'videoDetails' not in player_response:
             log.error(
                 f'{args.video_id} has no details, cannot proceed '
                 '(playability: {}, {})'.format(
-                video_info["playabilityStatus"]["status"],
-                video_info["playabilityStatus"]["reason"],
+                player_response["playabilityStatus"]["status"],
+                player_response["playabilityStatus"]["reason"],
             ))
             sys.exit(1)
         else:
-            channel_name = video_info['videoDetails']['author']
-            video_name = video_info['videoDetails']['title']
-            is_upcoming = video_info['videoDetails'].get('isUpcoming', False)
+            channel_name = player_response['videoDetails']['author']
+            video_name = player_response['videoDetails']['title']
+            is_upcoming = player_response['videoDetails'].get('isUpcoming', False)
 
     log.info(f'Channel: {channel_name}')
     log.info(f'Title: {video_name}')
     log.info(f'Upcoming: {is_upcoming}')
 
     if is_upcoming:
-        # XXX: Also apply config ignore_wait_greater_than_seconds here?
-        wait(video_info)
+        wait(video_info, player_response, config)
 
     filename_base = sanitize_filename(video_name)
     log.info(f'Filename base: {filename_base}')
@@ -172,7 +227,7 @@ def main():
         # See https://github.com/streamlink/streamlink/issues/2936
         '--hls-live-restart',
         '--retry-streams', '10',
-        '--verbose',
+        '--retry-max', '10',
         '-o', str(filepath_streamlink),
         f'https://www.youtube.com/watch?v={args.video_id}',
         'best',

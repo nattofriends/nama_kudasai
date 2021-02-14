@@ -15,13 +15,15 @@ import time
 import html5lib
 import yaml
 
+from common import INNOCUOUS_UA
 from common import check_pid
+from common import get_current_firefox_version
+from common import get_opener
+from common import get_video_info
 from common import load_config
 from common import load_state
-from common import get_video_info
 from common import open_state
 from common import setup_logging
-from common import INNOCUOUS_UA
 
 
 # Sockets...
@@ -51,6 +53,7 @@ class VideoState(IntEnum):
     TOO_FAR_IN_FUTURE = 4
     NOT_SCHEDULED = 5
     UNKNOWN_RATE_LIMITED = 6
+    TOO_FAR_IN_PAST = 7
 
 
 def check_channel(config, args, channel, video_liveness_cache):
@@ -59,15 +62,16 @@ def check_channel(config, args, channel, video_liveness_cache):
     log.info(f'Downloading channel feed')
     # This endpoint doesn't seem to honor If-Modified-Since, so I hope
     # they dont mind serving us data all the time
-    resp = urlopen(
-        Request(
-            f'https://www.youtube.com/feeds/videos.xml?channel_id={channel}',
-            headers={
-                'User-Agent': INNOCUOUS_UA,
-            },
-        ),
-        timeout=READ_TIMEOUT_S,
-    )
+    with get_opener() as opener:
+        resp = opener.open(
+            Request(
+                f'https://www.youtube.com/feeds/videos.xml?channel_id={channel}',
+                headers={
+                    'User-Agent': INNOCUOUS_UA.format(version=get_current_firefox_version()),
+                },
+            ),
+            timeout=READ_TIMEOUT_S,
+        )
 
     # XML documents are not poorly-formed HTML documents!
     tree = ET.parse(resp).getroot()
@@ -92,16 +96,17 @@ def check_channel(config, args, channel, video_liveness_cache):
         # videos.xml updates. Polling videos.xml did pick up a video which
         # was scheduled less than 30 minutes in advance, but... who knows.
         log.info(f'Checking channel live endpoint')
-        resp = urlopen(
-            Request(
-                f'https://www.youtube.com/channel/{channel}/live',
-                headers={
-                    # Too much JS if we pretend we're a modern browser
-                    'User-Agent': '',
-                },
-            ),
-            timeout=READ_TIMEOUT_S,
-        )
+        with get_opener() as opener:
+            resp = opener.open(
+                Request(
+                    f'https://www.youtube.com/channel/{channel}/live',
+                    headers={
+                        # Too much JS if we pretend we're a modern browser
+                        'User-Agent': '',
+                    },
+                ),
+                timeout=READ_TIMEOUT_S,
+            )
 
         tree = html5lib.parse(resp)
         # No more itemprop videoId...
@@ -153,7 +158,8 @@ def check_video(config, video_id, cached_liveness):
     # in order to be able to use the cached VideoState.TOO_FAR_IN_FUTURE.
 
     try:
-        video_info = get_video_info(video_id)
+        # `video_info` here is playerResponse
+        _, video_info = get_video_info(video_id)
     except HTTPError as e:
         if e.code == 429:
             log.warning(f'Rate limited while getting video info for {video_id}, skipping (no backoff)')
@@ -205,9 +211,12 @@ def check_video(config, video_id, cached_liveness):
             now = time.time()
             total_wait = scheduled_start - now
 
-            if total_wait > config['ignore_wait_greater_than_seconds']:
+            if total_wait > config['ignore_wait_greater_than_s']:
                 log.info(f'{video_id} starts too far in the future, at {scheduled_start} (in {timedelta(seconds=total_wait)})')
                 return VideoState.TOO_FAR_IN_FUTURE
+            elif total_wait < -config['ignore_past_scheduled_start_greater_than_s']:
+                log.info(f'{video_id} starts too far in the past, at {scheduled_start} ({timedelta(seconds=-total_wait)} ago)')
+                return VideoState.TOO_FAR_IN_PAST
 
     # Informational
     if not video_details.get('isUpcoming', False):

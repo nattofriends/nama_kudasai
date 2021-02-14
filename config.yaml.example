@@ -9,6 +9,11 @@ dropbox_chunk_size_mb: 50
 # Most streams farther out than this are probably free talk
 ignore_wait_greater_than_seconds: 604800  # 7 days
 
+# If a stream hasn't started by this duration after the scheduled start time,
+# something is probably wrong. Or it could be a free chat which is set up strangely.
+# Either way, we shouldn't start a downloader for it.
+ignore_past_scheduled_start_greater_than_s: 86400  # 1 day
+
 channels:
   # List of YouTube channel ids
   - UCabcd1234
