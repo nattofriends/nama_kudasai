@@ -103,17 +103,18 @@ def wait(video_info, player_response, config):
 
         heartbeat = json.loads(resp.read().decode('utf-8'))
 
-        scheduled_start = int(
-            heartbeat['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer']['scheduledStartTime']
-        )
-        total_wait = scheduled_start - time.time()
+        if 'offlineSlate' in heartbeat['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']:
+            scheduled_start = int(
+                heartbeat['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer']['scheduledStartTime']
+            )
+            total_wait = scheduled_start - time.time()
 
-        if total_wait > config['ignore_wait_greater_than_s']:
-            log.info(f"{player_response['videoDetails']['videoId']} starts too far in the future, at {scheduled_start} (in {timedelta(seconds=total_wait)})")
-            sys.exit(1)
-        elif total_wait < -config['ignore_past_scheduled_start_greater_than_s']:
-            log.info(f"{player_response['videoDetails']['videoId']} starts too far in the past, at {scheduled_start} ({timedelta(seconds=-total_wait)} ago)")
-            sys.exit(1)
+            if total_wait > config['ignore_wait_greater_than_s']:
+                log.info(f"{player_response['videoDetails']['videoId']} starts too far in the future, at {scheduled_start} (in {timedelta(seconds=total_wait)})")
+                sys.exit(1)
+            elif total_wait < -config['ignore_past_scheduled_start_greater_than_s']:
+                log.info(f"{player_response['videoDetails']['videoId']} starts too far in the past, at {scheduled_start} ({timedelta(seconds=-total_wait)} ago)")
+                sys.exit(1)
 
         status = heartbeat['playabilityStatus']['status']
 
