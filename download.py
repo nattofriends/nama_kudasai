@@ -27,7 +27,7 @@ from common import VideoInfoError
 from notification import notify
 from upload_dropbox import upload
 
-POLL_THRESHOLD_SECS = 120
+POLL_THRESHOLD_SECS = 180
 
 WORKDIR = Path('work')
 LOGDIR = Path('logs')
