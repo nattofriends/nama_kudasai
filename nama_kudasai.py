@@ -111,19 +111,22 @@ def check_channel(config, args, channel, video_liveness_cache):
         tree = html5lib.parse(resp)
         # No more itemprop videoId...
         canonical_link = tree.find(".//html:link[@rel='canonical']", FEED_NS)
-        canonical_url = canonical_link.attrib['href']
-        query = dict(parse.parse_qsl(parse.urlsplit(canonical_url).query))
-        live_video_id = query.get('v')
-        if live_video_id:
-            log.info(f'Live endpoint shows {live_video_id} is active')
-            if live_video_id in video_ids:
-                log.debug('Not adding because it was already in the feed')
+        # Sometimes Youtube delivers a completely blank page, and there is no canonical link
+        if canonical_link:
+            canonical_url = canonical_link.attrib['href']
+            query = dict(parse.parse_qsl(parse.urlsplit(canonical_url).query))
+            live_video_id = query.get('v')
+            if live_video_id:
+                log.info(f'Live endpoint shows {live_video_id} is active')
+                if live_video_id in video_ids:
+                    log.debug('Not adding because it was already in the feed')
+                else:
+                    log.info('Adding it to the list of videos')
+                    video_ids.add(live_video_id)
             else:
-                log.info('Adding it to the list of videos')
-                video_ids.add(live_video_id)
+                log.info('Canonical link is not a video, doing nothing')
         else:
-            # XXX: Move to debug once we don't need this info
-            log.info('Meta element not found in page, no video added from live endpoint')
+            log.info('Canonical link not found in page, no video added from live endpoint')
 
     for video_id in video_ids:
         video_liveness[video_id] = check_video(
