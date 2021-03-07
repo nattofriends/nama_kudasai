@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 import hashlib
 import logging
+import re
 
 from retrying import retry
 import dropbox
@@ -137,6 +138,9 @@ def upload(channel_directory, filename, filepath):
     dbx = dropbox.Dropbox(config['dropbox_api_access_token'])
 
     upload_chunk_size = config['dropbox_chunk_size_mb'] * 1024 * 1024
+
+    # Dropbox doesn't support characters defined outside the BMP. This includes most, but not all emoji.
+    filename = re.sub(r'[^\u0000-\uffff]', '', filename)
 
     full_path = DROPBOX_ROOT / channel_directory / filename
 
