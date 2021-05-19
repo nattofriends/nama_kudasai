@@ -58,34 +58,43 @@ class VideoState(IntEnum):
 
 def check_channel(config, args, channel, video_liveness_cache):
     log.info(f'Working on {channel}')
+    # Flip this flag when we catch something in order to continue
+    # but it's important enough to exit 1 overall.
+    failed = False
 
-    log.info(f'Downloading channel feed')
-    # This endpoint doesn't seem to honor If-Modified-Since, so I hope
-    # they dont mind serving us data all the time
-    with get_opener() as opener:
-        resp = opener.open(
-            Request(
-                f'https://www.youtube.com/feeds/videos.xml?channel_id={channel}',
-                headers={
-                    'User-Agent': INNOCUOUS_UA.format(version=get_current_firefox_version()),
-                },
-            ),
-            timeout=READ_TIMEOUT_S,
-        )
+    log.info(f'Fetching channel feed')
+    video_ids = set()
 
-    # XML documents are not poorly-formed HTML documents!
-    tree = ET.parse(resp).getroot()
+    try:
+        # This endpoint doesn't seem to honor If-Modified-Since, so I hope
+        # they dont mind serving us data all the time
+        with get_opener() as opener:
+            resp = opener.open(
+                Request(
+                    f'https://www.youtube.com/feeds/videos.xml?channel_id={channel}',
+                    headers={
+                        'User-Agent': INNOCUOUS_UA.format(version=get_current_firefox_version()),
+                    },
+                ),
+                timeout=READ_TIMEOUT_S,
+            )
 
-    title = tree.find('default:title', FEED_NS).text
-    log.info(f'{channel} is {title}')
+        # XML documents are not poorly-formed HTML documents!
+        tree = ET.parse(resp).getroot()
 
-    videos = tree.findall('default:entry', FEED_NS)
-    video_liveness = {}
+        title = tree.find('default:title', FEED_NS).text
+        log.info(f'{channel} is {title}')
 
-    video_ids = {
-        video.find('yt:videoId', FEED_NS).text
-        for video in videos
-    }
+        videos = tree.findall('default:entry', FEED_NS)
+        video_liveness = {}
+
+        video_ids = {
+            video.find('yt:videoId', FEED_NS).text
+            for video in videos
+        }
+    except HTTPError as e:
+        log.error(f'Got HTTPError {e} while fetching channel feed')
+        failed = True
 
     if args.skip_live_endpoint:
         log.info('Skipping /live endpoint')
@@ -141,6 +150,7 @@ def check_channel(config, args, channel, video_liveness_cache):
         state['channel_videos'] = state_channel_videos
 
     log.info(f'Done with {channel}')
+    return failed
 
 
 def check_video(config, video_id, cached_liveness):
@@ -246,6 +256,8 @@ def main():
     parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
 
+    retcode = 0
+
     setup_logging(level=logging.DEBUG if args.verbose else logging.INFO)
 
     config = load_config()
@@ -254,10 +266,11 @@ def main():
     cached_channel_state = state.get('channel_videos', {})
 
     for channel in config['channels']:
-        check_channel(config, args, channel, cached_channel_state.get(channel, {}))
+        check_result = check_channel(config, args, channel, cached_channel_state.get(channel, {}))
+        retcode |= int(check_result)
 
     # XXX: Probably want to clean up old active_downloaders at some point
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
