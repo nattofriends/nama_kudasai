@@ -172,7 +172,7 @@ def check_video(config, video_id, cached_liveness):
 
     try:
         # `video_info` here is playerResponse
-        _, video_info = get_video_info(video_id)
+        video_info = get_video_info(video_id)
     except HTTPError as e:
         if e.code == 429:
             log.warning(f'Rate limited while getting video info for {video_id}, skipping (no backoff)')

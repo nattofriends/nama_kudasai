@@ -13,7 +13,6 @@ import time
 import unicodedata
 
 from streamlink_cli.main import main as streamlink_main
-from tzlocal import get_localzone
 
 from common import check_pid
 from common import get_current_firefox_version
@@ -33,19 +32,6 @@ WORKDIR = Path('work')
 LOGDIR = Path('logs')
 
 HEARTBEAT_FIXED = {
-    'context': {
-        'client': {
-            'browserName': 'Firefox',
-            'clientName': 'WEB',
-            'deviceMake': 'www',
-            'deviceModel': 'www',
-            'gl': 'US',
-            'hl': 'en',
-            'osName': 'Windows',
-            'osVersion': '10.0',
-        },
-        'request': {},
-    },
     'heartbeatRequestParams': {
         'heartbeatChecks': ['HEARTBEAT_CHECK_TYPE_LIVE_STREAM_STATUS']
     },
@@ -54,8 +40,10 @@ HEARTBEAT_FIXED = {
 # This should probably log elsewhere too?
 log = logging.getLogger(__name__)
 
+from common import innertube_payload
+from common import INNERTUBE_API_KEY
 
-def wait(video_info, player_response, config):
+def wait(player_response, config):
     # If it hasn't started yet, we wait until a short amount of time before
     # the scheduled start time, and then start polling. This will probably
     # be less disruptive than constantly polling for hours and hours.
@@ -77,21 +65,13 @@ def wait(video_info, player_response, config):
         # Use heartbeat endpoint like a real client because of rate limits
         # on get_video_info
 
-        localzone = get_localzone()
-        offset = int(localzone.utcoffset(datetime.now()).total_seconds() / 60)
-        heartbeat_payload = HEARTBEAT_FIXED.copy()
-        heartbeat_payload['videoId'] = player_response['videoDetails']['videoId']
-        heartbeat_payload['context']['client'].update({
-            'browserVersion': f'{get_current_firefox_version()}.0',
-            'clientVersion': video_info['innertube_context_client_version'],
-            'timeZone': localzone.zone,
-            'utcOffsetMinutes': offset,
-        })
+        heartbeat_payload = innertube_payload()
+        heartbeat_payload.update(HEARTBEXT_FIXED)
 
         with get_opener() as opener:
             resp = opener.open(
                 Request(
-                    "https://www.youtube.com/youtubei/v1/player/heartbeat?alt=json&key={}".format(video_info['innertube_api_key']),
+                    f"https://www.youtube.com/youtubei/v1/player/heartbeat?alt=json&key={INNERTUBE_API_KEY}",
                     data=json.dumps(heartbeat_payload).encode('utf-8'),
                     headers={
                         "Content-Type": 'application/json',
@@ -185,7 +165,7 @@ def main():
         # There's no reason to use these overrides for an upcoming video
         is_upcoming = False
     else:
-        video_info, player_response = get_video_info(args.video_id)
+        player_response = get_video_info(args.video_id)
         if 'videoDetails' not in player_response:
             log.error(
                 f'{args.video_id} has no details, cannot proceed '
@@ -204,7 +184,7 @@ def main():
     log.info(f'Upcoming: {is_upcoming}')
 
     if is_upcoming:
-        wait(video_info, player_response, config)
+        wait(player_response, config)
 
     filename_base = sanitize_filename(video_name)
     log.info(f'Filename base: {filename_base}')
