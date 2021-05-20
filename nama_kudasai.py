@@ -118,10 +118,10 @@ def check_channel(config, args, channel, video_liveness_cache):
             )
 
         tree = html5lib.parse(resp)
-        # No more itemprop videoId...
         canonical_link = tree.find(".//html:link[@rel='canonical']", FEED_NS)
+
         # Sometimes Youtube delivers a completely blank page, and there is no canonical link
-        if canonical_link:
+        if canonical_link is not None:
             canonical_url = canonical_link.attrib['href']
             query = dict(parse.parse_qsl(parse.urlsplit(canonical_url).query))
             live_video_id = query.get('v')

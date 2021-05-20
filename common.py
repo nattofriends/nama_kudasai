@@ -99,6 +99,7 @@ def get_opener():
     yield opener
     jar.save(ignore_discard=True)
 
+
 def get_video_info(video_id):
     # XXX: This request was getting blocked with 429 Too Many Requests after a period of time accessing
     # over IPv6.
@@ -106,7 +107,7 @@ def get_video_info(video_id):
     with get_opener() as opener:
         resp = opener.open(
             Request(
-                f'https://www.youtube.com/get_video_info?video_id={video_id}',
+                f'https://www.youtube.com/get_video_info?html5=1&video_id={video_id}',
                 headers={
                     "Accept": "text/html",
                     "Dnt": "1",
