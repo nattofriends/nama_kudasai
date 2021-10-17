@@ -151,7 +151,7 @@ def upload(channel_directory, filename, filepath):
 
     log.info(f'Uploading in {total_chunks} chunks')
 
-    log.info(f'Starting session')
+    log.info('Starting session')
     session = dbx.files_upload_session_start(b'')
 
     uploaded = 0

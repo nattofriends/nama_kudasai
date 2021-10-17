@@ -3,7 +3,6 @@ from datetime import timedelta
 from enum import IntEnum
 from urllib.error import HTTPError
 from urllib.request import Request
-from urllib.request import urlopen
 from urllib import parse
 import xml.etree.ElementTree as ET
 import logging
@@ -13,7 +12,6 @@ import sys
 import time
 
 import html5lib
-import yaml
 
 from common import INNOCUOUS_UA
 from common import check_pid
@@ -67,8 +65,9 @@ def check_channel(config, args, channel, video_liveness_cache):
     # but it's important enough to exit 1 overall.
     failed = False
 
-    log.info(f'Fetching channel feed')
+    log.info('Fetching channel feed')
     video_ids = set()
+    video_liveness = {}
 
     try:
         # This endpoint doesn't seem to honor If-Modified-Since, so I hope
@@ -91,7 +90,6 @@ def check_channel(config, args, channel, video_liveness_cache):
         log.info(f'{channel} is {title}')
 
         videos = tree.findall('default:entry', FEED_NS)
-        video_liveness = {}
 
         video_ids = {
             video.find('yt:videoId', FEED_NS).text
@@ -109,7 +107,7 @@ def check_channel(config, args, channel, video_liveness_cache):
         # at videos.xml... but testing doesn't really show how fast or slow
         # videos.xml updates. Polling videos.xml did pick up a video which
         # was scheduled less than 30 minutes in advance, but... who knows.
-        log.info(f'Checking channel live endpoint')
+        log.info('Checking channel live endpoint')
         with get_opener() as opener:
             resp = opener.open(
                 Request(

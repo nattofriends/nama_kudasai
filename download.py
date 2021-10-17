@@ -1,4 +1,3 @@
-from datetime import datetime
 from datetime import timedelta
 from pathlib import Path
 from urllib.request import Request
@@ -14,15 +13,16 @@ import unicodedata
 
 from streamlink_cli.main import main as streamlink_main
 
+from common import INNERTUBE_API_KEY
+from common import INNOCUOUS_UA
 from common import check_pid
 from common import get_current_firefox_version
 from common import get_opener
 from common import get_video_info
-from common import INNOCUOUS_UA
+from common import innertube_payload
 from common import load_config
 from common import open_state
 from common import setup_logging
-from common import VideoInfoError
 from notification import notify
 from upload_dropbox import upload
 
@@ -40,8 +40,6 @@ HEARTBEAT_FIXED = {
 # This should probably log elsewhere too?
 log = logging.getLogger(__name__)
 
-from common import innertube_payload
-from common import INNERTUBE_API_KEY
 
 def wait(player_response, config):
     # If it hasn't started yet, we wait until a short amount of time before
@@ -66,7 +64,7 @@ def wait(player_response, config):
         # on get_video_info
 
         heartbeat_payload = innertube_payload()
-        heartbeat_payload.update(HEARTBEXT_FIXED)
+        heartbeat_payload.update(HEARTBEAT_FIXED)
 
         with get_opener() as opener:
             resp = opener.open(
@@ -99,7 +97,7 @@ def wait(player_response, config):
         status = heartbeat['playabilityStatus']['status']
 
         if status == 'OK':
-            log.info(f'Video is no longer upcoming, time to go')
+            log.info('Video is no longer upcoming, time to go')
             return
         elif status == 'UNPLAYABLE':
             log.info(f'Video not playable: {heartbeat["playabilityStatus"]}, giving up')
@@ -170,9 +168,10 @@ def main():
             log.error(
                 f'{args.video_id} has no details, cannot proceed '
                 '(playability: {}, {})'.format(
-                player_response["playabilityStatus"]["status"],
-                player_response["playabilityStatus"]["reason"],
-            ))
+                    player_response["playabilityStatus"]["status"],
+                    player_response["playabilityStatus"]["reason"],
+                )
+            )
             sys.exit(1)
         else:
             channel_name = player_response['videoDetails']['author']
@@ -239,7 +238,7 @@ def main():
         filepath_output,
     )
     if not args.no_remux:
-        log.info(f'Remuxing to mp4')
+        log.info('Remuxing to mp4')
         subprocess.run(ffmpeg_args, stdout=log_file)
     else:
         log.info('Skipping remux')
