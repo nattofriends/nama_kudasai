@@ -55,6 +55,11 @@ class VideoState(IntEnum):
     UNKNOWN_RATE_LIMITED = 6
     TOO_FAR_IN_PAST = 7
 
+    # From playabilityStatus
+    PRIVATE = 8
+    # Only known reason is membership only stream
+    MEMBERS_ONLY = 9
+
 
 def check_channel(config, args, channel, video_liveness_cache):
     log.info(f'Working on {channel}')
@@ -179,20 +184,21 @@ def check_video(config, video_id, cached_liveness):
             return VideoState.UNKNOWN_RATE_LIMITED
         raise e
 
+    playability = video_info['playabilityStatus']
 
-    # We could also check video_info['playabilityStatus']['status'], but
-    # seeing as how we can't really do anythiing if videoDetails isn't present,
-    # might as well go off that.
-    if 'videoDetails' not in video_info:
-        log.warning(
-            f'{video_info} has no details, marking as removed'
-        )
-        log.warning('(playability: {}, {}, {})'.format(
-            video_info["playabilityStatus"]["status"],
-            video_info["playabilityStatus"].get("reason", '(no reason provided'),
-            video_info["playabilityStatus"].get("messages", '(no messages provided)'),
-        ))
+    log.warning('(playability: {}, {}, {})'.format(
+        video_info["playabilityStatus"]["status"],
+        video_info["playabilityStatus"].get("reason", '(no reason provided'),
+        video_info["playabilityStatus"].get("messages", '(no messages provided)'),
+    ))
+    if playability == 'LOGIN_REQUIRED':
+        # Read: Private video
+        return VideoState.PRIVATE
+    elif playability == 'ERROR':
         return VideoState.REMOVED
+    elif playability == 'UNPLAYABLE':
+        # Read: membership required
+        return VideoState.MEMBERS_ONLY
 
     video_details = video_info['videoDetails']
 
@@ -207,8 +213,6 @@ def check_video(config, video_id, cached_liveness):
         log.debug(f'{video_id} appears to be finished, skipping')
         return VideoState.FINISHED
 
-    # XXX: Might make more sense to use playabilityStatus in the first
-    # place if we have to access more info about it here
     is_upcoming = video_info['videoDetails'].get('isUpcoming', False)
     if is_upcoming:
         scheduled_start = video_info['playabilityStatus']['liveStreamability']['liveStreamabilityRenderer']['offlineSlate']['liveStreamOfflineSlateRenderer'].get('scheduledStartTime')
