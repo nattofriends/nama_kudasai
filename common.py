@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from http.cookiejar import LWPCookieJar
+from http.cookiejar import LoadError
 from urllib.request import HTTPCookieProcessor
 from urllib.request import Request
 from urllib.request import build_opener
@@ -94,7 +95,10 @@ class VideoInfoError(Exception):
 def get_opener():
     jar = LWPCookieJar(COOKIES_FILENAME)
     if os.path.exists(COOKIES_FILENAME):
-        jar.load(ignore_discard=True)
+        try:
+            jar.load(ignore_discard=True)
+        except LoadError:
+            log.error('Cookie file corrupt, skipping')
 
     opener = build_opener(HTTPCookieProcessor(jar))
     yield opener
